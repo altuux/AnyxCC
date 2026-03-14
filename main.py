@@ -89,7 +89,7 @@ class AnyxCC:
             ],
             "CREDITS": [
                 {"type": "info", "name": "Anyx Control Center", "desc": "Created by altuux.", "cmd": "NONE"},
-                {"type": "info", "name": "Version 0.1 beta", "desc": "First build made for Trimui Smart Pro.", "cmd": "NONE"}
+                {"type": "info", "name": "Version 0.2 beta", "desc": "Beta build for the TrimUI Smart Pro.", "cmd": "NONE"}
             ]
         }
         self.categories = list(self.menu_data.keys())
