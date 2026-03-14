@@ -7,7 +7,7 @@ import subprocess
 
 # --- GLOBAL CONFIGURATION ---
 WIDTH, HEIGHT = 1280, 720
-DEBUG_MODE = False # Set to false on TrimUI
+DEBUG_MODE = True # Set to false on TrimUI
 
 DEFAULT_THEME = {
     "bg": [10, 10, 12],
@@ -49,6 +49,7 @@ class AnyxCC:
         
         self.show_popup = False
         self.running = True
+        self.pending_exit = False
 
         # --- DATA & FUNCTIONS ---
         self.menu_data = {
@@ -64,8 +65,8 @@ class AnyxCC:
                 {
                     "type": "cyclic", "name": "ZRAM", "desc": "Toggle ZRAM for better RAM effectiveness.",
                     "states": [
-                        {"label": "OFF", "cmd": "zram_start_script"}, 
-                        {"label": "ON", "cmd": "zram_stop_script"}  
+                        {"label": "OFF", "cmd": "/mnt/SDCARD/Apps/AnyxCC/scripts/zram_off.sh"}, 
+                        {"label": "ON", "cmd": "/mnt/SDCARD/Apps/AnyxCC/scripts/zram_on.sh"}  
                     ], "current": 0
                 },
                 {"type": "action", "name": "Flush System Cache", "desc": "Free up unused RAM memory.", "cmd": "sync; echo 3 > /proc/sys/vm/drop_caches"}
@@ -83,7 +84,7 @@ class AnyxCC:
                     ], "current": 0
                 },
                 {"type": "action", "name": "Reload Theme", "desc": "Apply changes from settings/theme.json.", "cmd": "RELOAD_THEME"},
-                {"type": "action", "name": "Update Anyx CC", "desc": "Download the latest version from GitHub.", "cmd": "git pull origin main"},
+                {"type": "action", "name": "Update Anyx CC", "desc": "Download the latest version from GitHub.", "cmd": "/mnt/SDCARD/Apps/AnyxCC/scripts/update.sh"},
                 {"type": "action", "name": "Reboot System", "desc": "Perform a complete console restart.", "cmd": "reboot"}
             ],
             "CREDITS": [
@@ -131,6 +132,13 @@ class AnyxCC:
                  except: pass
         elif cmd == "MUSIC_OFF":
             pygame.mixer.music.pause()
+        elif "update.sh" in cmd:
+            self.draw_loading()
+            if DEBUG_MODE:
+                print(f"[DEBUG EXEC]: {cmd}")
+            else:
+                os.system(cmd)
+            self.running = False
         elif cmd != "NONE":
             if not is_cyclic:
                 self.draw_loading()
@@ -232,80 +240,78 @@ class AnyxCC:
         needs_redraw = True
 
         while self.running:
-            # --- 1. Animation ---
             is_animating = (abs(self.scroll_y - self.target_scroll_y) > 0.5) or (abs(self.transition_x) > 0.5)
             
             if is_animating:
                 needs_redraw = True
 
-            # --- 2. Event handling ---
             for event in pygame.event.get():
                 if event.type == pygame.QUIT: 
                     self.running = False
                 
                 if event.type == pygame.KEYDOWN:
                     needs_redraw = True 
-                    
-                    current_cat_items = self.menu_data[self.categories[self.cat_idx]]
+                    current_cat_name = self.categories[self.cat_idx]
+                    current_cat_items = self.menu_data[current_cat_name]
                     items_in_cat = len(current_cat_items)
-                    selected_item = current_cat_items[self.item_idx]
                     
                     if self.show_popup:
-                        if event.key == pygame.K_RETURN: 
-                            self.execute(selected_item["cmd"])
+                        if event.key == pygame.K_RETURN:
+                            if self.pending_exit:
+                                self.running = False
+                            else:
+                                selected_item = current_cat_items[self.item_idx]
+                                self.execute(selected_item.get("cmd", "NONE"))
                             self.show_popup = False
-                        if event.key == pygame.K_ESCAPE: 
+                            self.pending_exit = False
+                                
+                        elif event.key == pygame.K_ESCAPE:
                             self.show_popup = False
-                        continue
+                            self.pending_exit = False
+                        continue 
 
-                    # Navigation
                     if event.key == pygame.K_UP: 
-                        if self.item_idx == 0:
-                            self.item_idx = items_in_cat - 1
-                            self.target_scroll_y = max(0, (items_in_cat * 135) - HEIGHT + 150)
-                        else:
-                            self.item_idx -= 1
-                            self.update_scroll()
+                        self.item_idx = (self.item_idx - 1) % items_in_cat
+                        self.update_scroll()
                             
                     elif event.key == pygame.K_DOWN: 
-                        if self.item_idx == items_in_cat - 1:
-                            self.item_idx = 0
-                            self.target_scroll_y = 0 
-                        else:
-                            self.item_idx += 1
-                            self.update_scroll()
+                        self.item_idx = (self.item_idx + 1) % items_in_cat
+                        self.update_scroll()
                         
                     elif event.key in [pygame.K_q, pygame.K_LEFT]: 
                         self.cat_idx = (self.cat_idx - 1) % len(self.categories)
                         self.item_idx = 0
                         self.target_scroll_y = 0
                         self.transition_x = -WIDTH 
+                        
                     elif event.key in [pygame.K_e, pygame.K_RIGHT]: 
                         self.cat_idx = (self.cat_idx + 1) % len(self.categories)
-                        self.item_idx = 0
+                        self.item_idx = 0 
                         self.target_scroll_y = 0
                         self.transition_x = WIDTH 
                         
-                    # Action Handling
                     elif event.key == pygame.K_RETURN:
+                        selected_item = current_cat_items[self.item_idx]
                         if selected_item["type"] == "cyclic":
                             selected_item["current"] = (selected_item["current"] + 1) % len(selected_item["states"])
                             cmd = selected_item["states"][selected_item["current"]]["cmd"]
                             self.execute(cmd, is_cyclic=True) 
+                            
                         elif selected_item["type"] == "action":
                             self.show_popup = True
+                            self.pending_exit = False
                             
-                    elif event.key == pygame.K_ESCAPE: 
-                        self.running = False
+                    elif event.key == pygame.K_ESCAPE:
+                        self.show_popup = True
+                        self.pending_exit = True
 
-            # --- 3. Needed redraw ---
             if needs_redraw:
                 self.draw()
                 pygame.display.flip()
                 if not is_animating:
                     needs_redraw = False
 
-            clock.tick(30)
+            clock.tick(60)
 
 if __name__ == "__main__":
     AnyxCC().main_loop()
