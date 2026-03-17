@@ -7,7 +7,7 @@ import subprocess
 
 # --- GLOBAL CONFIGURATION ---
 WIDTH, HEIGHT = 1280, 720
-DEBUG_MODE = True # Set to false on TrimUI
+DEBUG_MODE = False # Set to false on TrimUI
 
 DEFAULT_THEME = {
     "bg": [10, 10, 12],
@@ -89,17 +89,34 @@ class AnyxCC:
             ],
             "CREDITS": [
                 {"type": "info", "name": "Anyx Control Center", "desc": "Created by altuux.", "cmd": "NONE"},
-                {"type": "info", "name": "Version 0.2 beta", "desc": "Beta build for the TrimUI Smart Pro.", "cmd": "NONE"}
+                {"type": "info", "name": "Version 0.2.1 beta", "desc": "Beta build for the TrimUI Smart Pro.", "cmd": "NONE"}
             ]
         }
         self.categories = list(self.menu_data.keys())
+        
+        self.sync_system_states()
 
         try:
             pygame.mixer.music.load("sound/bg-music.mp3")
             pygame.mixer.music.set_volume(0.15)
             pygame.mixer.music.play(-1)
         except: 
-            self.menu_data["SETTINGS"][0]["current"] = 1 
+            self.menu_data["SETTINGS"][0]["current"] = 1
+
+    # Sync the system states
+    def sync_system_states(self):
+        #Sync CPU mode
+        try:
+            with open("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor", "r") as f:
+                current_gov = f.read().strip()
+            for i, state in enumerate(self.menu_data["SYSTEM"][0]["states"]):
+                if state["label"].lower() in current_gov.lower() or current_gov in state["cmd"]:
+                    self.menu_data["SYSTEM"][0]["current"] = i
+        except: pass
+
+        # Sync ZRAM
+        zram_active = os.path.exists("/dev/zram0")
+        self.menu_data["SYSTEM"][1]["current"] = 1 if zram_active else 0
 
     def load_theme(self):
         if os.path.exists("settings/theme.json"):
@@ -113,7 +130,7 @@ class AnyxCC:
         try:
             with open("/sys/class/power_supply/battery/capacity", "r") as f:
                 return f.read().strip() + "%"
-        except: return "100%"
+        except: return "N/A%"
 
     def draw_loading(self):
         self.screen.fill(self.colors["bg"])
@@ -128,8 +145,8 @@ class AnyxCC:
         elif cmd == "MUSIC_ON":
             pygame.mixer.music.unpause()
             if not pygame.mixer.music.get_busy(): 
-                 try: pygame.mixer.music.play(-1)
-                 except: pass
+                try: pygame.mixer.music.play(-1)
+                except: pass
         elif cmd == "MUSIC_OFF":
             pygame.mixer.music.pause()
         elif "update.sh" in cmd:
